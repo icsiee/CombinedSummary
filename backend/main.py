@@ -58,7 +58,11 @@ def get_sample_news():
     final_summary = summarizer(truncated_full_summary, max_length=max_length, min_length=75, do_sample=False)  # Min_length arttırıldı
 
     # Check if the final summary ends with a complete sentence
+if final_summary and len(final_summary) > 0:
     final_text = final_summary[0]['summary_text']
+else:
+    final_text = "Özet oluşturulamadı."
+
     if not final_text.endswith("."):
         # If it doesn't end with a period, try to append the last part to make it a complete sentence
         final_text += "."
