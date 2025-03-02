@@ -1,76 +1,85 @@
 from fastapi import FastAPI
-from pydantic import BaseModel
 from transformers import pipeline
 from fastapi.middleware.cors import CORSMiddleware
 import torch
-from concurrent.futures import ThreadPoolExecutor
 
+# FastAPI uygulamasını oluştur
 app = FastAPI()
 
-# CORS settings
+# CORS ayarları (React uygulaması için)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # React app origin
+    allow_origins=["http://localhost:3000"],  # React uygulamasının URL'si
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# BERT summarizer pipeline (GPU kullanımı için)
-device = 0 if torch.cuda.is_available() else -1  # GPU varsa, 0 kullan, yoksa CPU
-summarizer = pipeline("summarization", model="facebook/bart-large-cnn", device=device)  # Büyük BART modelini kullandık
+# Cihaz kontrolü (GPU varsa kullan)
+device = 0 if torch.cuda.is_available() else -1
+print(f"Device set to use: {'CUDA (GPU)' if device == 0 else 'CPU'}")
 
-# Sample news text
+# BERT modeli ile konu analizi
+classifier = pipeline(
+    "text-classification",
+    model="dbmdz/bert-base-turkish-cased",  # Türkçe metinler için BERT modeli
+    device=device,
+)
+
+# Özetleme için BART modeli
+summarizer = pipeline(
+    "summarization",
+    model="facebook/bart-large-cnn",  # Özetleme için BART modeli
+    device=device,
+)
+
+# Örnek haber metinleri
 sample_news = [
-    " 2. Dünya Savaşı, 1939 yılında Almanya'nın Polonya'ya saldırmasıyla başladı. Bu saldırı, İngiltere ve Fransa'nın Almanya'ya savaş ilan etmesine yol açtı. Savaşın hemen ardından Almanya, Sovyetler Birliği ile Molotov-Ribbentrop Paktı'nı imzalayarak Avrupa'da stratejik bir denge kurmayı hedefledi. Ancak, 1941'de Almanya'nın Sovyetler Birliği'ne saldırması savaşın kaderini değiştirdi. Amerika Birleşik Devletleri'nin Pearl Harbor'a yapılan Japon saldırısının ardından savaşa dahil olması, müttefiklerin lehine bir dönüm noktası oldu. Almanya'nın Batı cephesinde müttefiklerle karşılaştığı çetin direniş, Doğu cephesinde Sovyetlerin ilerlemesiyle birleşti. Normandiya Çıkarması, müttefiklerin Avrupa'ya girmesinin başlangıcıydı. 1945 yılında Sovyetler Birliği Berlin'i işgal etti ve Nazi Almanyası teslim oldu. Japonya ise atom bombasıyla karşı karşıya kaldı. Sonunda, 2. Dünya Savaşı 1945'te sona erdi ve dünya yeniden şekillendi.",
-    " 2. Dünya Savaşı, tarihteki en büyük çatışmalardan biri olarak kaydedildi. Almanya'nın Polonya'ya saldırısıyla başlayan savaş, tüm dünyayı etkisi altına aldı. Avrupa'da savaş, Nazizm'in yükselmesine ve Almanya'nın hızlıca toprak kazanmasına neden oldu. Ancak, Almanya'nın Sovyetler Birliği'ne saldırısı, iki büyük gücün karşı karşıya gelmesine yol açtı. Japonya'nın Asya'daki genişleme arzusu, Pasifik'teki savaşın alevlenmesine neden oldu. 1941'de Amerika Birleşik Devletleri'nin savaşa katılması, müttefiklerin stratejik üstünlük kazanmasına yardımcı oldu. 1944 yılında Normandiya Çıkarması ile Batı Avrupa'da büyük bir ilerleme kaydedildi. 1945'te Sovyetler Birliği, Berlin'e girerek Nazi Almanyası'nı sona erdirdi. Aynı yıl Japonya, atom bombalarının ardından teslim oldu. Bu savaş, dünya siyasetini ve sınırlarını köklü şekilde değiştirdi.",
-    " 2. Dünya Savaşı, sadece Avrupa'yı değil, tüm dünyayı etkileyen bir savaş haline geldi. 1939'da Almanya'nın Polonya'ya saldırmasıyla başlayan savaş, kısa sürede tüm kıtalara yayıldı. Batı Avrupa'da, Almanya hızla Fransız topraklarını işgal etti. Sovyetler Birliği ile yapılan anlaşmaların ardından, Almanya'nın Sovyetler Birliği'ne saldırması savaşın büyük bir dönüm noktasıydı. Japonya, Asya'da toprak kazanarak Pasifik'teki savaşın önemli bir oyuncusu oldu. Amerika Birleşik Devletleri, Japonya'nın Pearl Harbor'a saldırmasının ardından savaşa katıldı. Normandiya Çıkarması ile Batı Avrupa'da savaşın seyrini değiştiren müttefikler, Sovyetler Birliği ile işbirliği yaptı. 1945'te Almanya teslim oldu ve Avrupa'da savaş sona erdi. Japonya ise atom bombalarının etkisiyle teslim oldu. Bu savaşın sonunda dünya siyasi haritası yeniden çizildi.",
-    " 2. Dünya Savaşı, dünya tarihinin en büyük askeri çatışması olarak kabul edilmektedir. 1939'da Almanya'nın Polonya'ya saldırmasıyla başlayan savaş, kısa süre içinde büyük bir küresel çatışmaya dönüştü. Almanya, Avrupa'da hızlı bir şekilde toprak kazandı ve İngiltere ile Fransız direnişleriyle karşılaştı. 1941'de Sovyetler Birliği'ne yapılan saldırı, savaşın doğu cephesini başlattı. Japonya, Asya'da genişleme politikası izleyerek Pasifik Okyanusu'na hakim olmayı hedefledi. 1941'de Amerika Birleşik Devletleri'nin savaşa katılması, müttefiklerin gücünü artırdı. 1944 yılında Normandiya Çıkarması ile Batı Avrupa'da savaşın seyrini değiştiren müttefikler, Berlin'e kadar ilerledi. 1945'te Sovyetler Berlin'i işgal etti ve Nazi Almanyası teslim oldu. Japonya ise atom bombaları sonrası teslim oldu. 2. Dünya Savaşı, dünya genelindeki siyasi dengeleri değiştirdi ve yeni bir dünya düzeninin temellerini attı.",
-    " 2. Dünya Savaşı, 1939 yılında Almanya'nın Polonya'ya saldırmasıyla başladı. Bu saldırı, savaşın patlak vermesine neden oldu ve İngiltere ile Fransa Almanya'ya savaş ilan etti. Almanya, hızla Avrupa'da toprak kazandı ve Sovyetler Birliği'ne karşı büyük bir saldırı başlattı. 1941'de Amerika Birleşik Devletleri'nin savaşa katılması, müttefiklerin lehine bir gelişme oldu. Japonya'nın Asya'da genişleme arzusu, Pasifik'teki savaşın büyümesine yol açtı. Normandiya Çıkarması, Batı Avrupa'da büyük bir direnişi kırarak müttefiklerin zafer kazanmasına yardımcı oldu. 1945 yılında Sovyetler Birliği Berlin'i işgal etti ve Nazi Almanyası teslim oldu. Japonya ise atom bombaları nedeniyle teslim oldu. Savaş, dünya siyasetinde köklü değişikliklere yol açtı. Sonunda 2. Dünya Savaşı sona erdi ve dünya yeni bir düzene girdi."
-
+    "29 Mayıs 1453'te Osmanlı Padişahı II. Mehmet önderliğinde İstanbul fethedildi. Bizans İmparatorluğu'nun başkenti olan şehir, Osmanlı topraklarına katıldı. Kuşatma sırasında kullanılan büyük toplar, surların yıkılmasında etkili oldu. İstanbul'un fethi, Orta Çağ’ın sonu ve Yeni Çağ’ın başlangıcı olarak kabul edilir. II. Mehmet, bu zaferden sonra unvanını aldı. Osmanlı Devleti’nin başkenti Bursa’dan İstanbul’a taşındı. Şehrin kültürel ve ekonomik yapısında büyük değişimler yaşandı. Ayasofya, camiye dönüştürülerek ibadete açıldı. İstanbul, Osmanlı’nın en önemli ticaret ve kültür merkezi haline geldi. Fetih, Osmanlı’nın dünya sahnesindeki gücünü artırdı.",
+    "Her yıl 29 Mayıs’ta İstanbul’un fethi çeşitli etkinliklerle anılıyor. Bu yıl da İstanbul’da büyük kutlamalar yapıldı. Törenler, Mehter Takımı’nın gösterisiyle başladı. İstanbul’un fethi, Türk tarihinde bir dönüm noktası olarak kabul ediliyor. Kutlamalar kapsamında tarihi canlandırmalar gerçekleştirildi. Fatih Sultan Mehmet’in şehre girişini temsilen tiyatro gösterisi düzenlendi. Ayasofya ve Topkapı Sarayı’nda özel sergiler açıldı. Fetih, Osmanlı Devleti’nin yükseliş döneminin başlangıcı oldu. Cumhurbaşkanı, törende yaptığı konuşmada fetih ruhunun önemine değindi. Kutlamalara binlerce kişi katılarak coşkuyla İstanbul’un fethini andı.",
+    "İstanbul’un fethi, Bizans İmparatorluğu’nun sonunu getirdi. II. Mehmet’in komutasındaki Osmanlı ordusu, 53 gün süren kuşatmayı başarıyla tamamladı. Osmanlı ordusu, Haliç’e indirilen gemilerle büyük bir avantaj sağladı. 29 Mayıs 1453’te Osmanlı askerleri Topkapı surlarından şehre girdi. Bizans İmparatoru XI. Konstantinos, savaş meydanında hayatını kaybetti. Fetihle birlikte Osmanlı, Avrupa ve Asya arasında köprü kurdu. İstanbul, Osmanlı’nın yeni başkenti olarak ilan edildi. Fetihten sonra şehirde çeşitli imar çalışmaları başlatıldı. Osmanlı mimarisiyle yeniden şekillenen İstanbul, İslam dünyasının önemli merkezlerinden biri oldu. İstanbul’un fethi, dünya tarihindeki en önemli olaylardan biri olarak kabul edilir.",
+    "Fatih Sultan Mehmet, İstanbul’un fethi için uzun süre hazırlık yaptı. Osmanlı ordusu, fetih öncesinde yeni toplar üreterek güçlendi. Rumeli Hisarı’nın inşası, kuşatmanın başarısında önemli rol oynadı. Osmanlı donanması, Haliç’e karadan gemi indirerek Bizans’ı şaşırttı. 53 gün süren kuşatma sonunda surlar aşıldı. Fetihle birlikte Osmanlı Devleti, büyük bir güce ulaştı. İstanbul, Osmanlı Devleti’nin siyasi ve ekonomik merkezi oldu. Fatih Sultan Mehmet, şehirde birçok reform gerçekleştirdi. İstanbul’un fethi, Osmanlı’nın Avrupa’daki ilerleyişini hızlandırdı. Fatih’in stratejik zekâsı, Osmanlı tarihindeki en büyük zaferlerden birini getirdi.",
+    "İstanbul’un fethi, Avrupa’da büyük yankı uyandırdı. Osmanlı’nın bu zaferi, Hristiyan dünyasında büyük bir şok etkisi yarattı. Avrupa devletleri, Osmanlı’nın ilerleyişini durdurmak için ittifak arayışına girdi. Fetihle birlikte Osmanlı Devleti, Avrupa’nın en güçlü imparatorluklarından biri oldu. Venedik ve Ceneviz gibi devletler, Osmanlı ile diplomatik ilişkilerini geliştirdi. İstanbul’un fethi, Avrupa’da Rönesans hareketlerini hızlandırdı. Osmanlı’nın güçlenmesi, Avrupa’daki siyasi dengeleri değiştirdi. İstanbul, İslam dünyasının en önemli şehirlerinden biri haline geldi. Fatih Sultan Mehmet’in liderliği, Osmanlı’yı zirveye taşıdı. Fetihten sonra Osmanlı, doğu ve batı arasında köprü kurarak dünya siyasetinde etkili oldu.",
 ]
 
-# Function to generate a summary of each news in parallel
-def generate_summary(news):
-    sentences = news.split(". ")
-    truncated_news = ". ".join(sentences[:15])  # Daha fazla cümle kullanalım
-    input_length = len(truncated_news.split())
-    max_length = max(input_length // 2, 100)  # Minimum 100 kelime ile özet
-    summary = summarizer(truncated_news, max_length=max_length, min_length=75, do_sample=False)  # Min_length arttırıldı
-    return summary[0]['summary_text']
+# Metni parçalara bölme fonksiyonu
+def split_text(text, max_length=512):
+    words = text.split()
+    chunks = []
+    current_chunk = []
 
-@app.get("/get_sample_news")
-def get_sample_news():
-    # Use ThreadPoolExecutor for parallel processing of news summaries
-    with ThreadPoolExecutor() as executor:
-        summaries = list(executor.map(generate_summary, sample_news))
+    for word in words:
+        if len(" ".join(current_chunk)) + len(word) + 1 <= max_length:
+            current_chunk.append(word)
+        else:
+            chunks.append(" ".join(current_chunk))
+            current_chunk = [word]
 
-    # Now summarize the summaries
-    full_summary = " ".join(summaries)
-    sentences = full_summary.split(". ")  # Split the final summaries into sentences
-    truncated_full_summary = ". ".join(sentences[:5])  # İlk 5 cümleyi alalım
-    
-    # Calculate the input length for the final summary
-    input_length = len(truncated_full_summary.split())
-    max_length = max(input_length // 2, 100)  # Minimum 100 kelime ile özet
+    if current_chunk:
+        chunks.append(" ".join(current_chunk))
 
-    # Generate the final summary
-    final_summary = summarizer(truncated_full_summary, max_length=max_length, min_length=75, do_sample=False)  # Min_length arttırıldı
+    return chunks
 
-    # Check if the final summary ends with a complete sentence
-if final_summary and len(final_summary) > 0:
-    final_text = final_summary[0]['summary_text']
-else:
-    final_text = "Özet oluşturulamadı."
+# Haber özetleme fonksiyonu
+def generate_summary(text):
+    chunks = split_text(text)
+    summaries = []
 
-    if not final_text.endswith("."):
-        # If it doesn't end with a period, try to append the last part to make it a complete sentence
-        final_text += "."
-    
-    return {
-        "final_summary": final_text
-    }
+    for chunk in chunks:
+        summary = summarizer(chunk, max_length=150, min_length=50, do_sample=False)[0]["summary_text"]
+        summaries.append(summary)
 
+    combined_summary = " ".join(summaries)
+    return combined_summary
+
+# API endpoint: Tüm haberler için tek bir özet oluştur
+@app.get("/get_combined_summary")
+def get_combined_summary():
+    combined_news = " ".join(sample_news)
+    summary = generate_summary(combined_news)
+    return {"combined_summary": summary}
+
+# Ana sayfa
 @app.get("/")
 def read_root():
     return {"message": "Welcome to the News Summarization API!"}
